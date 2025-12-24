@@ -1,0 +1,10 @@
+{
+  "id": "folder-sync",
+  "name": "Folder Sync",
+  "version": "1.0.0",
+  "minAppVersion": "0.15.0",
+  "description": "Automatically creates and syncs folders matching markdown file names",
+  "author": "",
+  "authorUrl": "",
+  "isDesktopOnly": false
+}
