@@ -1,0 +1,1 @@
+# obsidian-unique-folder-sync-plugin
