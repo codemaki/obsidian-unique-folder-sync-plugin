@@ -6,13 +6,21 @@ export default class FolderSyncPlugin extends Plugin {
 	settings: FolderSyncSettings;
 	private isReverting: boolean = false;
 	private isDeletingDuplicate: boolean = false;
+	private pluginLoadTime: number = 0;
 
 	async onload() {
 		await this.loadSettings();
 
+		// Record plugin load time
+		this.pluginLoadTime = Date.now();
+
 		// Register event handlers
 		this.registerEvent(
 			this.app.vault.on('create', this.handleFileCreate.bind(this))
+		);
+
+		this.registerEvent(
+			this.app.vault.on('modify', this.handleFileModify.bind(this))
 		);
 
 		this.registerEvent(
@@ -45,6 +53,9 @@ export default class FolderSyncPlugin extends Plugin {
 
 		// Filter: Only process markdown files
 		if (!this.isMarkdownFile(file)) return;
+
+		// Only process files created after plugin load (ignore existing files on restart)
+		if (file.stat.ctime < this.pluginLoadTime) return;
 
 		// Check for duplicate names if enabled
 		if (this.settings.preventDuplicateNames) {
@@ -208,6 +219,48 @@ export default class FolderSyncPlugin extends Plugin {
 		} catch (error) {
 			new Notice(`Failed to delete folder: ${error.message}`, 5000);
 			console.error('Folder deletion error:', error);
+		}
+	}
+
+	// File Modify Handler
+	async handleFileModify(file: TAbstractFile) {
+		// Type guard and filter
+		if (!(file instanceof TFile)) return;
+		if (!this.isMarkdownFile(file)) return;
+
+		// Only process if user is actively editing this file
+		const activeFile = this.app.workspace.getActiveFile();
+		if (!activeFile || activeFile.path !== file.path) return;
+
+		// Construct folder path
+		const folderPath = this.getFolderPathForFile(file.path);
+
+		// Check if folder already exists
+		if (await this.folderExists(folderPath)) return;
+
+		// Create base folder if it doesn't exist
+		if (this.settings.baseFolder && !(await this.folderExists(this.settings.baseFolder))) {
+			try {
+				await this.app.vault.createFolder(this.settings.baseFolder);
+			} catch (error: any) {
+				// Ignore "already exists" errors (race condition)
+				if (!error.message?.includes('already exists')) {
+					new Notice(`Failed to create base folder: ${error.message}`, 5000);
+					console.error('Base folder creation error:', error);
+					return;
+				}
+			}
+		}
+
+		// Create the folder
+		try {
+			await this.app.vault.createFolder(folderPath);
+		} catch (error: any) {
+			// Ignore "already exists" errors (race condition)
+			if (!error.message?.includes('already exists')) {
+				new Notice(`Failed to create folder: ${error.message}`, 5000);
+				console.error('Folder creation error:', error);
+			}
 		}
 	}
 
